@@ -3,7 +3,7 @@ import { getDataset, updateDataset } from "kv";
 import { setSettings } from "@init";
 import { getClNormalConfig, getClWarpConfig } from "@clash/configs";
 import { getSbCustomConfig, getSbWarpConfig } from "@sing-box/configs";
-import { getXrCustomConfigs, getXrWarpConfigs } from "@xray/configs";
+import { getXrCustomConfigs, getXrWarpConfigs, getNodeOnlyLinks } from "@xray/configs";
 import { fetchWarpAccounts } from "@warp";
 import { VlOverWSHandler } from "@vless";
 import { TrOverWSHandler } from "@trojan";
@@ -142,6 +142,9 @@ export async function handleSubscriptions(request: Request, env: Env): Promise<R
     } = globalThis;
 
     switch (pathName) {
+        case `/sub/nodeonly/${subPath}`:
+            return await getNodeOnlyLinks();
+
         case `/sub/normal/${subPath}`:
             switch (client) {
                 case 'xray':

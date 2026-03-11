@@ -17,7 +17,10 @@ import {
     isHttps,
     getProtocols,
     parseHostPort,
-    toRange
+    toRange,
+    generateWsPath,
+    selectSniHost,
+    randomUpperCase
 } from '@utils';
 
 function buildBalancer(tag: string, selector: string, hasFallback: boolean): Balancer {
@@ -412,4 +415,117 @@ function modifyOutbound(outbound: Outbound, tag: string, dialerProxy?: string): 
     }
 
     return newOutbound;
+}
+
+function generateShareLink(
+    protocol: string,
+    address: string,
+    port: number,
+    index: number,
+    isChain: boolean
+): string {
+    const {
+        globalConfig: { userID, TrPass, hostName },
+        dict: { _VL_, _TR_ }
+    } = globalThis;
+
+    const isTLS = isHttps(port);
+    const { host, sni, allowInsecure } = selectSniHost(address);
+    const wsPath = `${generateWsPath(protocol)}?ed=2560`;
+    const encodedPath = encodeURIComponent(wsPath);
+    const fingerprint = globalThis.settings.fingerprint || 'chrome';
+    const remark = generateRemark(index, port, address, protocol, false, isChain);
+    const encodedRemark = encodeURIComponent(remark);
+
+    if (protocol === _VL_) {
+        // VLESS link format
+        const security = isTLS ? 'tls' : 'none';
+        const params = new URLSearchParams({
+            encryption: 'none',
+            security: security,
+            type: 'ws',
+            host: host,
+            path: encodedPath,
+            fp: fingerprint
+        });
+
+        if (isTLS) {
+            params.set('sni', sni);
+            params.set('alpn', 'http/1.1');
+            if (allowInsecure) {
+                params.set('allowInsecure', '1');
+            }
+        }
+
+        return `vless://${userID}@${address}:${port}?${params.toString()}#${encodedRemark}`;
+    } else if (protocol === _TR_) {
+        // Trojan link format
+        const params = new URLSearchParams({
+            security: isTLS ? 'tls' : 'none',
+            type: 'ws',
+            host: host,
+            path: encodedPath,
+            fp: fingerprint
+        });
+
+        if (isTLS) {
+            params.set('sni', sni);
+            params.set('alpn', 'http/1.1');
+            if (allowInsecure) {
+                params.set('insecure', '1');
+                params.set('allowInsecure', '1');
+            }
+        }
+
+        return `trojan://${TrPass}@${address}:${port}?${params.toString()}#${encodedRemark}`;
+    }
+
+    return '';
+}
+
+export async function getNodeOnlyLinks(): Promise<Response> {
+    const { outProxy, ports } = globalThis.settings;
+    const hasChain = !!outProxy;
+
+    const addresses = await getConfigAddresses(false);
+    const totalPorts = ports; // Include all ports (both TLS and non-TLS)
+    const protocols = getProtocols();
+
+    const links: string[] = [];
+    let index = 1;
+
+    for (const protocol of protocols) {
+        let protocolIndex = 1;
+        for (const port of totalPorts) {
+            for (const addr of addresses) {
+                const link = generateShareLink(protocol, addr, port, protocolIndex, false);
+                if (link) {
+                    links.push(link);
+                }
+
+                if (hasChain) {
+                    const chainLink = generateShareLink(protocol, addr, port, protocolIndex, true);
+                    if (chainLink) {
+                        links.push(chainLink);
+                    }
+                }
+
+                protocolIndex++;
+                index++;
+            }
+        }
+    }
+
+    // Join links with newlines and encode to Base64 for better client compatibility
+    const plainText = links.join('\n');
+    const base64Content = btoa(plainText);
+
+    return new Response(base64Content, {
+        status: 200,
+        headers: {
+            'Content-Type': 'text/plain;charset=utf-8',
+            'Cache-Control': 'no-store',
+            'CDN-Cache-Control': 'no-store'
+        }
+    });
 }

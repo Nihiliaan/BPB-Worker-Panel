@@ -249,7 +249,9 @@ async function dlURL(path, app) {
             throw new Error(`status ${response.status} at ${response.url} - ${data}`);
         }
 
-        downloadJSON(data, "config.json");
+        // NodeOnly downloads as .txt file with share links, others as .json
+        const fileName = path === 'nodeonly' ? 'nodeonly.txt' : 'config.json';
+        downloadText(data, fileName);
     } catch (error) {
         console.error("Download error:", error.message || error);
     }
@@ -257,6 +259,16 @@ async function dlURL(path, app) {
 
 function downloadJSON(data, fileName) {
     const blob = new Blob([data], { type: 'text/plain' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+}
+
+function downloadText(data, fileName) {
+    const blob = new Blob([data], { type: 'text/plain;charset=utf-8' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
     link.download = fileName;
